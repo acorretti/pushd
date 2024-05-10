@@ -1,0 +1,8 @@
+###
+### Pushover alerts config
+###
+
+PUSHD_USER  = USER # Your Pushover user key
+PUSHD_TOKEN = TOKEN 
+PUSHD_PROXY = PROXY # optional
+PUSHD_TITLE = TITLE # optional, defaults to hostname

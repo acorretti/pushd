@@ -1,11 +1,14 @@
-#	$OpenBSD$
+CC = gcc
+CFLAGS = -Wall -Wextra -Werror -std=gnu99
+LIBS = -lcurl
 
-PROG=	pushd
-NOMAN=	yes
-CFLAGS+=-Wall -Wunused -I/usr/local/include
-LDFLAGS=-L/usr/local/lib
-LDADD=	-lcurl
-LDSTATC=-static
-BINDIR=	/usr/local/bin
+pushd: pushd.c
+	$(CC) $(CFLAGS) -o pushd pushd.c $(LIBS)
 
-.include <bsd.prog.mk>
+.PHONY: clean
+clean:
+	rm -f pushd
+
+install: pushd
+	cp -f pushd /usr/local/lib
+	@if [ ! -f /etc/pushd.conf ]; then set -x; cp pushd.conf.example /etc/pushd.conf; fi
