@@ -15,6 +15,18 @@ template(name="pushdmsg" type="string" string="%msg%\n")
 *.=emerg action(type="omprog" binary="/usr/local/bin/pushd" template="pushdmsg")
 ```
 
+Make sure you load the `omprog` rsyslog module, by adding the following to `/etc/rsyslog.conf`
+
+```
+module(load="omprog")
+```
+
+Then restart rsyslog
+
+```
+sudo systemctl restart rsyslog.service
+```
+
 ## Building
 
 ```
@@ -30,7 +42,7 @@ make
 ## Installing
 
 ```
-make install
+sudo make install
 ```
 
 ## Configuration
