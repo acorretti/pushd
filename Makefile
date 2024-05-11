@@ -10,5 +10,5 @@ clean:
 	rm -f pushd
 
 install: pushd
-	cp -f pushd /usr/local/lib
+	cp -f pushd /usr/local/bin
 	@if [ ! -f /etc/pushd.conf ]; then set -x; cp pushd.conf.example /etc/pushd.conf; fi
