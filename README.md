@@ -54,4 +54,9 @@ PUSHD_USER  = USER # Your Pushover user key
 PUSHD_TOKEN = TOKEN
 PUSHD_PROXY = PROXY # optional
 PUSHD_TITLE = TITLE # optional, defaults to hostname
+PUSHD_DNSCACHE = false # optional, caches the dns resolution for `api.pushover.net` at init
 ```
+
+> [!IMPORTANT]
+> When using the DNS resolution cache, `curl` won't validate the certificate's name hostname.
+> See [CURLOPT_SSL_VERIFYHOST](https://curl.se/libcurl/c/CURLOPT_SSL_VERIFYHOST.html).

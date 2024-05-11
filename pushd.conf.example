@@ -6,3 +6,4 @@ PUSHD_USER  = USER # Your Pushover user key
 PUSHD_TOKEN = TOKEN 
 PUSHD_PROXY = PROXY # optional
 PUSHD_TITLE = TITLE # optional, defaults to hostname
+PUSHD_DNSCACHE = false # optional, caches the dns resolution for `api.pushover.net` at init

@@ -23,13 +23,17 @@
 #define USER_SET (1 << 2)
 #define PROXY_SET (1 << 3)
 #define TITLE_SET (1 << 4)
-#define CONFIG_ERROR (1 << 5)
+#define DNSCACHE_SET (1 << 5)
+#define CONFIG_ERROR (1 << 6)
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <err.h>
 #include <errno.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 #include <unistd.h>
 #include <syslog.h>
 
@@ -39,6 +43,11 @@
 /* #define PUSHD_USER "YOUR USERTOKEN" */
 /* #define PUSHD_PROXY "http://your.proxy.example.org:8181" */
 /* #define PUSHD_TITLE "optional title (default: hostname)" */
+/* #define PUSHD_DNSCACHE false (default: false)*/
+
+#define PUSHOVER_API_PREFIX "https://"
+#define PUSHOVER_HOSTNAME "api.pushover.net"
+#define PUSHOVER_API_SUFFIX "/1/messages.json"
 
 typedef struct config
 {
@@ -47,11 +56,16 @@ typedef struct config
 	char user[CONFIG_SIZE];
 	char proxy[CONFIG_SIZE];
 	char title[TITLE_SIZE];
+	bool dns_cache;
 } CONFIG;
 
 int read_config(char *, CONFIG *);
 int parse_config(char *, CONFIG *);
 void push(char *, CONFIG *);
+void validate_pushover_hostname();
+void resolve_pushover_ip();
+
+char pushover_api_url[100];
 
 int read_config(char *file_name, CONFIG *config)
 {
@@ -86,6 +100,12 @@ int read_config(char *file_name, CONFIG *config)
 		sprintf(config->title, "%s", hostname);
 	}
 
+	// if no dnscache, set it to 0
+	if (!(config->set & DNSCACHE_SET))
+	{
+		config->dns_cache = false;
+	}
+
 	return result;
 }
 
@@ -99,7 +119,7 @@ int parse_config(char *buf, CONFIG *config)
 		return 0; // comment
 
 	// trim whitespace, and get up to the equal sign
-	char *config_name = strtok(buf, " \t\n\r\f\v");
+	char *config_name = strtok(buf, "= \t\n\r\f\v");
 	if (config_name && strncmp(config_name, "PUSHD_", 6) == 0)
 	{
 		char *config_value = strtok(NULL, "= #\t\n\r\f\v");
@@ -137,10 +157,60 @@ int parse_config(char *buf, CONFIG *config)
 				strcpy(config->title, config_value);
 				return 0;
 			}
+			else if (strcmp(config_name, "PUSHD_DNSCACHE") == 0)
+			{
+				if (config->set & DNSCACHE_SET)
+					return DNSCACHE_SET;
+				config->set |= DNSCACHE_SET;
+				if (strcmp(config_value, "0") != 0 && strcasecmp(config_value, "false") != 0)
+					config->dns_cache = true;
+				else
+					config->dns_cache = false;
+				return 0;
+			}
 			config_value = strtok(NULL, " =");
 		}
 	}
 	return CONFIG_ERROR;
+}
+
+void validate_pushover_hostname()
+{
+	CURL *curl;
+	curl = curl_easy_init();
+	if (curl == NULL)
+	{
+		err(1, "curl_easy_init: dns_cache");
+	}
+	curl_easy_setopt(curl, CURLOPT_URL, PUSHOVER_API_PREFIX PUSHOVER_HOSTNAME PUSHOVER_API_SUFFIX);
+	curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
+	if (curl_easy_perform(curl) != CURLE_OK)
+	{
+		syslog(LOG_ERR, "Abort: Error validating '" PUSHOVER_API_PREFIX PUSHOVER_HOSTNAME PUSHOVER_API_SUFFIX);
+		err(1, "resolve_pushover_ip: check failed");
+	}
+	curl_easy_cleanup(curl);
+}
+
+void resolve_pushover_ip()
+{
+	validate_pushover_hostname();
+
+	struct addrinfo hints, *res;
+	int error;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	if ((error = getaddrinfo(PUSHOVER_HOSTNAME, NULL, &hints, &res)))
+	{
+		syslog(LOG_ERR, "Abort: Error getting '" PUSHOVER_HOSTNAME "' address info");
+		err(1, "getaddrinfo: %s", gai_strerror(error));
+	}
+	char *pushover_ip = inet_ntoa(((struct sockaddr_in *)res->ai_addr)->sin_addr);
+	sprintf(pushover_api_url, "%s%s%s", PUSHOVER_API_PREFIX, pushover_ip, PUSHOVER_API_SUFFIX);
+	syslog(LOG_DEBUG, "Pushover hostname cached to: '%s'", pushover_ip);
+
+	freeaddrinfo(res);
 }
 
 void push(char *msg, CONFIG *config)
@@ -166,14 +236,24 @@ void push(char *msg, CONFIG *config)
 	if (opts == NULL)
 		goto out;
 
-	curl_easy_setopt(curl, CURLOPT_URL, "https://api.pushover.net/1/messages.json");
+	struct curl_slist *headers = NULL;
+	headers = curl_slist_append(headers, "Host: " PUSHOVER_HOSTNAME);
+	curl_easy_setopt(curl, CURLOPT_URL, pushover_api_url);
+	if (config->dns_cache == true)
+	{
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0);
+	}
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, opts);
+	// curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 	if (config->set & PROXY_SET)
 	{
 		curl_easy_setopt(curl, CURLOPT_PROXY, config->proxy);
 	}
 
 	curl_easy_perform(curl);
+	curl_free(opts);
+	curl_slist_free_all(headers);
 out:
 	curl_easy_cleanup(curl);
 }
@@ -182,6 +262,7 @@ int main()
 {
 	openlog("pushd", LOG_PID | LOG_CONS, LOG_USER);
 
+	// Parse config
 	CONFIG *config = malloc(sizeof(CONFIG));
 	config->set = 0u;
 
@@ -197,6 +278,12 @@ int main()
 
 	curl_global_init(CURL_GLOBAL_ALL);
 
+	if (config->dns_cache == true)
+		resolve_pushover_ip();
+	else
+		sprintf(pushover_api_url, "%s%s%s", PUSHOVER_API_PREFIX, PUSHOVER_HOSTNAME, PUSHOVER_API_SUFFIX);
+
+	// Read lines and push them
 	for (;;)
 	{
 		line = NULL;
@@ -210,6 +297,8 @@ int main()
 	}
 
 	curl_global_cleanup();
+
+	free(config);
 
 	closelog();
 	return 0;
