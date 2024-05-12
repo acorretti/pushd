@@ -3,6 +3,8 @@
 `pushd` takes messages on stdin and pipes each line to your pushover
 account. It depends on cURL for major laziness.
 
+Supports multi-line messages by converting literal `\n` to newline characters.
+
 This is a Linux port of https://github.com/bluerise/pushd
 
 You can use it with rsyslog by adding a file to _/etc/rsyslog.d_ containing:
@@ -21,7 +23,7 @@ Make sure you load the `omprog` rsyslog module, by adding the following to `/etc
 module(load="omprog")
 ```
 
-Then restart rsyslog
+Then restart rsyslog:
 
 ```
 sudo systemctl restart rsyslog.service

@@ -62,6 +62,7 @@ typedef struct config
 int read_config(char *, CONFIG *);
 int parse_config(char *, CONFIG *);
 void push(char *, CONFIG *);
+void replace_newline(char *);
 void validate_pushover_hostname();
 void resolve_pushover_ip();
 
@@ -213,6 +214,22 @@ void resolve_pushover_ip()
 	freeaddrinfo(res);
 }
 
+void replace_newline(char *str)
+{
+	const char *newline = "\\n";
+	const char *replacement = "\n";
+	size_t newline_len = strlen(newline);
+	size_t replacement_len = strlen(replacement);
+
+	char *pos = strstr(str, newline);
+	while (pos != NULL)
+	{
+		memmove(pos + replacement_len, pos + newline_len, strlen(pos + newline_len) + 1);
+		memcpy(pos, replacement, replacement_len);
+		pos = strstr(pos + replacement_len, newline);
+	}
+}
+
 void push(char *msg, CONFIG *config)
 {
 	CURL *curl;
@@ -226,6 +243,7 @@ void push(char *msg, CONFIG *config)
 	if (curl == NULL)
 		return;
 
+	replace_newline(msg);
 	output = curl_easy_escape(curl, msg, 0);
 	if (output == NULL)
 		goto out;
